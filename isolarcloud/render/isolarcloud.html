@@ -1,0 +1,202 @@
+{% extends "plugin.html" %}
+
+{% block content %}
+<div class="solar-dashboard">
+
+  <!-- Header -->
+  <div class="solar-header">
+    <div class="solar-title">{{ plant_name }}</div>
+    <div class="solar-date">{{ current_date }} &middot; {{ last_refresh }}</div>
+  </div>
+
+  <!-- Primary Metrics Row: Battery %, Solar Yield, Grid Feed-in -->
+  <div class="primary-metrics">
+
+    <!-- Battery SOC -->
+    <div class="metric-card battery-card">
+      <div class="metric-label">Battery</div>
+      <div class="metric-value">{{ metrics.battery_soc }}<span class="metric-unit">%</span></div>
+      <div class="battery-bar-container">
+        <div class="battery-bar-fill" style="width: {{ metrics.battery_soc }}%;"></div>
+      </div>
+    </div>
+
+    <!-- Solar Generated Today -->
+    <div class="metric-card solar-card">
+      <div class="metric-label">Solar Today</div>
+      <div class="metric-value">{{ metrics.today_energy }}<span class="metric-unit">kWh</span></div>
+      <div class="metric-sub">Now {{ metrics.curr_power }} kW</div>
+    </div>
+
+    <!-- Grid Imported Today -->
+    <div class="metric-card grid-card">
+      <div class="metric-label">Imported</div>
+      <div class="metric-value">{{ metrics.today_grid_import }}<span class="metric-unit">kWh</span></div>
+      <div class="metric-sub">
+        {% if metrics.grid_power > 0 %}Now {{ metrics.grid_power }} kW in{% elif metrics.grid_power < 0 %}Now {{ (metrics.grid_power | abs) }} kW out{% else %}Now 0 kW{% endif %}
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Timeseries Chart -->
+  {% if history|length > 1 %}
+  <div class="chart-container">
+    <canvas id="solarChart"></canvas>
+  </div>
+  {% endif %}
+
+  <!-- Secondary Metrics Row -->
+  <div class="secondary-metrics">
+
+    <div class="metric-tile">
+      <div class="tile-label">Used Today</div>
+      <div class="tile-value">{{ metrics.today_load }}<span class="tile-unit"> kWh</span></div>
+    </div>
+
+    <div class="metric-tile">
+      <div class="tile-label">Exported</div>
+      <div class="tile-value">{{ metrics.today_grid_feed }}<span class="tile-unit"> kWh</span></div>
+    </div>
+
+    <div class="metric-tile">
+      <div class="tile-label">Self Use</div>
+      <div class="tile-value">{{ metrics.self_sufficiency }}<span class="tile-unit">%</span></div>
+    </div>
+
+    <div class="metric-tile">
+      <div class="tile-label">All Time</div>
+      <div class="tile-value">
+        {% if metrics.total_energy >= 1000 %}
+          {{ (metrics.total_energy / 1000) | round(1) }}<span class="tile-unit"> MWh</span>
+        {% else %}
+          {{ metrics.total_energy }}<span class="tile-unit"> kWh</span>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+{% if history|length > 1 %}
+<script src="{{static_dir}}/scripts/chart.js" charset="UTF-8"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const labels = [{% for h in history %}"{{ h.time }}"{% if not loop.last %}, {% endif %}{% endfor %}];
+  const batterySoc = [{% for h in history %}{{ h.battery_soc }}{% if not loop.last %}, {% endif %}{% endfor %}];
+  const solarPower = [{% for h in history %}{{ h.solar_kw }}{% if not loop.last %}, {% endif %}{% endfor %}];
+  const gridImport = [{% for h in history %}{{ h.grid_import_kw|default(h.grid_kw|default(0)) }}{% if not loop.last %}, {% endif %}{% endfor %}];
+  const gridExport = [{% for h in history %}{{ h.grid_export_kw|default(0) }}{% if not loop.last %}, {% endif %}{% endfor %}];
+
+  const canvas = document.getElementById('solarChart');
+  const ctx = canvas.getContext('2d');
+
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Battery %',
+          data: batterySoc,
+          borderColor: 'rgba(46, 139, 87, 1)',
+          backgroundColor: 'rgba(46, 139, 87, 0.15)',
+          fill: true,
+          tension: 0.3,
+          borderWidth: 3,
+          pointRadius: 0,
+          yAxisID: 'y'
+        },
+        {
+          label: 'Solar kW',
+          data: solarPower,
+          borderColor: 'rgba(232, 163, 23, 1)',
+          backgroundColor: 'rgba(232, 163, 23, 0.1)',
+          fill: true,
+          tension: 0.3,
+          borderWidth: 3,
+          pointRadius: 0,
+          yAxisID: 'y1'
+        },
+        {
+          label: 'Import kW',
+          data: gridImport,
+          borderColor: 'rgba(220, 50, 50, 1)',
+          backgroundColor: 'rgba(220, 50, 50, 0.1)',
+          fill: true,
+          tension: 0.3,
+          borderWidth: 3,
+          pointRadius: 0,
+          yAxisID: 'y1'
+        },
+        {
+          label: 'Export kW',
+          data: gridExport,
+          borderColor: 'rgba(26, 111, 176, 1)',
+          backgroundColor: 'rgba(26, 111, 176, 0.1)',
+          fill: true,
+          tension: 0.3,
+          borderWidth: 3,
+          pointRadius: 0,
+          yAxisID: 'y1'
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+          labels: {
+            boxWidth: 16,
+            boxHeight: 4,
+            padding: 8,
+            color: '#000000',
+            font: { size: 14, weight: '600' }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: {
+            font: { size: 13, weight: '600' },
+            color: '#000000',
+            maxRotation: 0,
+            autoSkip: true,
+            maxTicksLimit: 6
+          },
+          grid: { display: false }
+        },
+        y: {
+          position: 'left',
+          min: 0,
+          max: 100,
+          ticks: {
+            font: { size: 13, weight: '600' },
+            color: '#000000',
+            callback: function(v) { return v === 0 || v === 100 ? v + '%' : ''; }
+          },
+          grid: { color: 'rgba(0,0,0,0.06)' }
+        },
+        y1: {
+          position: 'right',
+          min: 0,
+          ticks: {
+            font: { size: 13, weight: '600' },
+            color: '#000000',
+            maxTicksLimit: 4,
+            callback: function(v) { return v + 'kW'; }
+          },
+          grid: { display: false }
+        }
+      }
+    }
+  });
+});
+</script>
+{% endif %}
+{% endblock %}

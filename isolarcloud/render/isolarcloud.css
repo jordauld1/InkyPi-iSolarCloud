@@ -1,0 +1,252 @@
+/* iSolarCloud Dashboard - optimized for e-ink displays */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Height chain: needed so the dashboard's height: 100% resolves to the viewport */
+html, body, .container {
+  height: 100%;
+}
+
+.solar-dashboard {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  padding: 0 1.5vw;
+  font-family: "Jost", sans-serif;
+  overflow: hidden;
+
+  /* Accent colors — e-ink friendly palette */
+  --color-solar: #e8a317;    /* amber/yellow – solar generation */
+  --color-battery: #2e8b57;  /* green – battery */
+  --color-grid: #1a6fb0;     /* blue – grid */
+}
+
+/* ── Header ─────────────────────────────────────── */
+
+.solar-header {
+  width: 100%;
+  text-align: center;
+  flex-shrink: 0;
+  padding-bottom: 0;
+  line-height: 1;
+}
+
+.solar-title {
+  font-size: min(5dvh, 4.5vw);
+  font-weight: bold;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.solar-date {
+  font-size: min(4dvh, 3.5vw);
+  font-weight: 600;
+  opacity: 0.85;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+/* ── Primary Metrics (3 compact cards) ──────────── */
+
+.primary-metrics {
+  display: flex;
+  gap: 1.5vw;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.metric-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid currentColor;
+  border-radius: 1vw;
+  padding: 0.3dvh 0.5vw;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.metric-label {
+  font-size: min(3.8dvh, 4vw);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.metric-value {
+  font-size: min(6.5dvh, 7vw);
+  font-weight: 800;
+  line-height: 1.05;
+  white-space: nowrap;
+}
+
+.metric-unit {
+  font-size: 0.55em;
+  font-weight: 600;
+  vertical-align: super;
+  margin-left: 0.05em;
+}
+
+.metric-sub {
+  font-size: min(3.5dvh, 3.5vw);
+  font-weight: 600;
+  opacity: 0.85;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+/* Battery bar */
+.battery-bar-container {
+  width: 70%;
+  height: 1.5dvh;
+  border: 1.5px solid currentColor;
+  border-radius: 0.4vw;
+  overflow: hidden;
+  margin: 0.2dvh 0;
+}
+
+.battery-bar-fill {
+  height: 100%;
+  background: var(--color-battery);
+  min-width: 1%;
+  transition: none;
+}
+
+/* Card accent colors */
+.battery-card { border-color: var(--color-battery); }
+.solar-card   { border-color: var(--color-solar); }
+.grid-card    { border-color: var(--color-grid); }
+
+.battery-card .metric-label { color: var(--color-battery); }
+.solar-card .metric-label   { color: var(--color-solar); }
+.grid-card .metric-label    { color: var(--color-grid); }
+
+/* ── Chart section ──────────────────────────────── */
+
+.chart-container {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  padding: 0.3dvh 0 0;
+}
+
+.chart-container canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* ── Secondary Metrics (tiles) ──────────────────── */
+
+.secondary-metrics {
+  display: flex;
+  gap: 1.5vw;
+  width: 100%;
+  flex-shrink: 0;
+  padding-top: 0;
+}
+
+.metric-tile {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-top: 2px solid currentColor;
+  padding: 0.2dvh 0.5vw 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tile-label {
+  font-size: min(3.5dvh, 3.5vw);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.85;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.tile-value {
+  font-size: min(5dvh, 5.5vw);
+  font-weight: 800;
+  white-space: nowrap;
+  line-height: 1.1;
+}
+
+.tile-unit {
+  font-size: 0.55em;
+  font-weight: 600;
+}
+
+.tile-sub {
+  font-size: min(2.2dvh, 2.5vw);
+  opacity: 0.6;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+/* ── Responsive: portrait/vertical orientation ──── */
+
+@media (max-aspect-ratio: 1) {
+  .primary-metrics {
+    flex-direction: column;
+    gap: 0.8dvh;
+  }
+
+  .metric-card {
+    flex-direction: row;
+    justify-content: space-between;
+    padding: 0.8dvh 2vw;
+    gap: 2vw;
+  }
+
+  .metric-label {
+    font-size: min(2.5dvh, 5vw);
+  }
+
+  .metric-value {
+    font-size: min(4dvh, 9vw);
+  }
+
+  .metric-sub {
+    font-size: min(2dvh, 4vw);
+  }
+
+  .battery-bar-container {
+    width: 40%;
+    height: 1.2dvh;
+  }
+
+  .secondary-metrics {
+    flex-wrap: wrap;
+    gap: 1vw;
+  }
+
+  .metric-tile {
+    flex: 1 1 40%;
+    min-width: 40%;
+  }
+}
+
+/* ── Small displays ─────────────────────────────── */
+
+@media (max-width: 300px) {
+  .solar-dashboard {
+    font-family: "Dogica", monospace;
+  }
+
+  .metric-card {
+    border-width: 1px;
+    border-radius: 0.8vw;
+  }
+}

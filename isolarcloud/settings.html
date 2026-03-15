@@ -1,0 +1,32 @@
+<div class="form-group">
+    <label for="api_region" class="form-label">iSolarCloud Region:</label>
+    <select id="api_region" name="api_region" class="form-input">
+        <option value="global">Global</option>
+        <option value="europe">Europe</option>
+        <option value="australia">Australia</option>
+        <option value="international">International (HK)</option>
+    </select>
+</div>
+
+<div class="form-group">
+    <label for="ps_id" class="form-label">Power Station ID:</label>
+    <input type="text" id="ps_id" name="ps_id" placeholder="Leave blank to auto-detect" class="form-input">
+    <small style="width: 100%; color: var(--text-primary);">Optional. If left blank, the plugin will auto-detect your first power station. For multiple plants, find the ID via the Developer API <code>getPowerStationList</code> endpoint.</small>
+</div>
+
+<small style="display: block; margin-top: 8px; line-height: 1.8; color: var(--text-primary);">
+    Credentials: Add the following keys to your <a href="/api-keys">.env file</a>:<br>
+    <code>ISOLARCLOUD_USERNAME</code> &ndash; iSolarCloud account username<br>
+    <code>ISOLARCLOUD_PASSWORD</code> &ndash; iSolarCloud account password<br>
+    <code>ISOLARCLOUD_APPKEY</code> &ndash; Developer Portal app key<br>
+    <code>ISOLARCLOUD_SECRET</code> &ndash; Developer Portal secret key
+</small>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        if (loadPluginSettings) {
+            document.getElementById('api_region').value = pluginSettings.api_region || 'global';
+            document.getElementById('ps_id').value = pluginSettings.ps_id || '';
+        }
+    });
+</script>
