@@ -6,12 +6,6 @@
   padding: 0;
 }
 
-/* Override base template inline styles so dvh units match the actual content area */
-body {
-  margin: 0 !important;
-  padding: 0 !important;
-}
-
 /* Height chain: needed so the dashboard's height: 100% resolves to the viewport */
 html, body, .container {
   height: 100%;
@@ -201,9 +195,9 @@ html, body, .container {
   white-space: nowrap;
 }
 
-/* ── Responsive: portrait/vertical orientation ──── */
+/* ── Responsive: narrow screens & portrait orientation ─── */
 
-@media (max-aspect-ratio: 1) {
+@media (max-aspect-ratio: 1), (max-width: 480px) {
   .primary-metrics {
     flex-direction: column;
     gap: 0.8dvh;
