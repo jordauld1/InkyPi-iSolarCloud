@@ -6,6 +6,12 @@
   padding: 0;
 }
 
+/* Override base template inline styles so dvh units match the actual content area */
+body {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
 /* Height chain: needed so the dashboard's height: 100% resolves to the viewport */
 html, body, .container {
   height: 100%;
