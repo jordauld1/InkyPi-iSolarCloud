@@ -9,15 +9,16 @@ your row when done.
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 001 | [Test suite, CI and render preview tool](001-test-baseline-and-preview.md) | P1 | M | — | DONE |
+| 001 | [Test suite, CI and render preview tool](001-test-baseline-and-preview.md) | P1 | M | — | DONE (Codex gpt-6-sol) |
 | 002 | [Fix README install command](002-fix-readme-install-command.md) | P1 | S | — | DONE (Codex gpt-6-luna) |
-| 003 | [Battery SOC as whole number; unpadded date](003-battery-soc-display.md) | P1 | S | 001 | TODO |
-| 004 | [Full-day, per-plant, atomic chart history; `tojson`](004-history-fixes.md) | P2 | S | 001 | TODO |
-| 005 | [Battery-aware grid power and daily usage](005-battery-aware-grid-and-usage.md) | P1 | M | 001 (003 first) — **human checkpoint** | TODO |
+| 003 | [Battery SOC as whole number; unpadded date](003-battery-soc-display.md) | P1 | S | 001 | DONE (Codex gpt-6-sol) |
+| 004 | [Full-day, per-plant, atomic chart history; `tojson`](004-history-fixes.md) | P2 | S | 001 | DONE (Codex gpt-6-sol) |
+| 005 | [Battery-aware grid power and daily usage](005-battery-aware-grid-and-usage.md) | P1 | M | 001 (003 first) — **human checkpoint** | IN PROGRESS (Part A done; Part B revised, ready) |
 | 006 | [Live battery charge/discharge on battery card](006-battery-flow-on-card.md) | P3 | S | 005 (battery row of its discovery table) | TODO |
 | 007 | [Plant selection help; error on unknown ps_id](007-plant-selection-help.md) | P2 | S | 001 | TODO |
 | 008 | [Network error messages, dead code, unused 12 MB image](008-cleanup-errors-and-dead-code.md) | P3 | S | 001; run after 003–007 | TODO |
-| 009 | [Spike: fill chart from iSolarCloud history API](009-spike-chart-backfill.md) | P3 | M | 005 Part A — **human checkpoint** | TODO |
+| 010 | Chart backfill from history API (to be written after 005) | P2 | M | 004, 005, 009 | TODO (approved by owner) |
+| 009 | [Spike: fill chart from iSolarCloud history API](009-spike-chart-backfill.md) | P3 | M | 005 Part A — **human checkpoint** | DONE (spike: Go, see 009-spike-findings.md) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
