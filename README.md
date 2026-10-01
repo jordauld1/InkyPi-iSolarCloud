@@ -52,7 +52,9 @@ The iSolarCloud Developer API is **free** to use. Rate limits are generous and w
 
 Your `ps_id` identifies which solar plant to query. **If you leave this blank, the plugin will auto-detect your first power station.**
 
-For accounts with multiple plants, you can find a specific `ps_id` by calling the Developer API `getPowerStationList` endpoint — each plant in the response includes its `ps_id`.
+For accounts with multiple plants, leave the field blank and refresh the plugin once. The InkyPi log then lists every power station's ID and name:
+
+    journalctl -u inkypi -n 100 | grep "power stations"
 
 > **Note:** The iSolarCloud web portal (V3) encrypts all URL parameters, so the `ps_id` is not visible in the browser address bar.
 

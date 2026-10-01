@@ -1,4 +1,5 @@
 from datetime import datetime
+import logging
 
 import pytest
 
@@ -51,6 +52,55 @@ def test_auto_detects_plant(plugin, fake_session, monkeypatch):
     assert realtime["json"]["ps_key_list"] == ["4242_11_0_0"]
     assert result is sentinel
     assert captured["template_params"]["plant_name"] == "Home Plant"
+
+
+def test_autodetect_logs_all_plants(plugin, fake_session, monkeypatch, caplog):
+    capture_render(plugin, monkeypatch)
+    queue_login(fake_session)
+    fake_session.queue("getPowerStationList", api_ok({
+        "pageList": [
+            {"ps_id": 1, "ps_name": "Home"},
+            {"ps_id": 2, "ps_name": "Shed"},
+        ],
+    }))
+    queue_realtime(fake_session)
+
+    with caplog.at_level(logging.INFO):
+        plugin.generate_image({"ps_id": ""}, FakeDeviceConfig(env=FULL_ENV))
+
+    assert "1 (Home)" in caplog.text
+    assert "2 (Shed)" in caplog.text
+    assert any(
+        record.levelno == logging.WARNING and "Power Station ID" in record.message
+        for record in caplog.records
+    )
+
+
+def test_autodetect_single_plant_no_warning(plugin, fake_session, monkeypatch, caplog):
+    capture_render(plugin, monkeypatch)
+    queue_login(fake_session)
+    fake_session.queue("getPowerStationList", api_ok({
+        "pageList": [{"ps_id": 1, "ps_name": "Home"}],
+    }))
+    queue_realtime(fake_session)
+
+    with caplog.at_level(logging.INFO):
+        plugin.generate_image({"ps_id": ""}, FakeDeviceConfig(env=FULL_ENV))
+
+    assert "iSolarCloud power stations on this account: 1 (Home)" in caplog.text
+    assert not any(record.levelno == logging.WARNING for record in caplog.records)
+
+
+def test_unknown_ps_id_raises(plugin, fake_session):
+    queue_login(fake_session)
+    fake_session.queue("getDeviceRealTimeData", api_ok({"device_point_list": []}))
+
+    with pytest.raises(RuntimeError) as error:
+        plugin.generate_image({"ps_id": "999"}, FakeDeviceConfig(env=FULL_ENV))
+
+    assert "999" in str(error.value)
+    assert "leave it blank" in str(error.value)
+    assert all(c["endpoint"] != "getDeviceList" for c in fake_session.calls)
 
 
 def test_explicit_plant_skips_lookup(plugin, fake_session, monkeypatch):

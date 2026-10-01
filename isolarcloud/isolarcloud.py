@@ -75,11 +75,23 @@ class ISolarCloud(BasePlugin):
                 raise RuntimeError(
                     "No power stations found on this iSolarCloud account."
                 )
+            listing = ", ".join(f"{p.get('ps_id')} ({p.get('ps_name', '')})" for p in plants)
+            logger.info("iSolarCloud power stations on this account: %s", listing)
+            if len(plants) > 1:
+                logger.warning(
+                    "Multiple power stations found; using the first. "
+                    "Set Power Station ID in the plugin settings to choose another."
+                )
             ps_id = str(plants[0]["ps_id"])
             logger.info("Auto-detected Power Station ID: %s (%s)", ps_id, plants[0].get("ps_name", ""))
 
         # Fetch real-time data
         device_points = api.get_device_realtime_data(token, ps_id, POINT_IDS)
+        if not device_points:
+            raise RuntimeError(
+                f"No data for Power Station ID {ps_id}. "
+                "Check the ID, or leave it blank to auto-detect."
+            )
         ess_points = self._fetch_ess_points(api, token, ps_id)
 
         # Parse metrics
