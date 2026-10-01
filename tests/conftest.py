@@ -44,10 +44,14 @@ class FakeResponse:
 class FakeSession:
     def __init__(self):
         self.responses = {}
+        self.defaults = {}
         self.calls = []
 
     def queue(self, endpoint, response):
         self.responses.setdefault(endpoint, []).append(response)
+
+    def default(self, endpoint, response):
+        self.defaults[endpoint] = response
 
     def post(self, url, headers=None, json=None, timeout=None):
         endpoint = url.rsplit("/", 1)[-1]
@@ -60,6 +64,8 @@ class FakeSession:
         })
         responses = self.responses.get(endpoint, [])
         if not responses:
+            if endpoint in self.defaults:
+                return self.defaults[endpoint]
             raise AssertionError(f"No response queued for {endpoint}")
         return responses.pop(0)
 
@@ -67,6 +73,7 @@ class FakeSession:
 @pytest.fixture
 def fake_session(plugin_mod, monkeypatch):
     session = FakeSession()
+    session.default("getDevicePointMinuteDataList", api_ok({}))
     monkeypatch.setattr(plugin_mod, "get_http_session", lambda: session)
     return session
 

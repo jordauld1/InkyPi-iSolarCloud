@@ -88,3 +88,26 @@ def test_realtime_data_for_device(api, fake_session):
     assert call["json"]["device_type"] == 14
     assert call["json"]["ps_key_list"] == ["1_14_1_1"]
     assert points == {"p13149": "1693"}
+
+
+def test_minute_data(api, fake_session):
+    rows = [{"time_stamp": "20261001120000", "p83033": "100"}]
+    fake_session.queue("getDevicePointMinuteDataList", api_ok({"1_11_0_0": rows}))
+
+    assert api.get_minute_data(
+        "tok", "1_11_0_0", ["83033", "83252"], "20261001090000", "20261001120000",
+    ) == rows
+    call = fake_session.calls[0]
+    assert call["json"]["ps_key_list"] == ["1_11_0_0"]
+    assert call["json"]["points"] == "p83033,p83252"
+    assert call["json"]["start_time_stamp"] == "20261001090000"
+    assert call["json"]["end_time_stamp"] == "20261001120000"
+    assert call["json"]["minute_interval"] == 5
+    assert call["headers"]["token"] == "tok"
+
+
+def test_minute_data_empty(api, fake_session):
+    fake_session.queue("getDevicePointMinuteDataList", api_ok({}))
+    assert api.get_minute_data(
+        "tok", "1_11_0_0", ["83033"], "20261001090000", "20261001120000",
+    ) == []

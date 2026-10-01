@@ -30,6 +30,7 @@ def queue_realtime(fake_session, points=None):
         "device_point_list": [{"device_point": points if points is not None else SAMPLE_POINTS}],
     }))
     fake_session.queue("getDeviceList", api_ok({"pageList": []}))
+    fake_session.default("getDevicePointMinuteDataList", api_ok({}))
 
 
 def test_missing_credentials(plugin, fake_session):
@@ -127,6 +128,29 @@ def test_current_date_not_zero_padded(plugin, plugin_mod, fake_session, monkeypa
     plugin.generate_image({"ps_id": "777"}, FakeDeviceConfig(env=FULL_ENV))
 
     assert captured["template_params"]["current_date"] == "Thursday, October 1"
+
+
+def test_generate_image_uses_api_history(plugin, plugin_mod, fake_session, monkeypatch):
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return tz.localize(datetime(2026, 10, 1, 0, 20))
+
+    monkeypatch.setattr(plugin_mod, "datetime", FixedDatetime)
+    captured, _ = capture_render(plugin, monkeypatch)
+    queue_login(fake_session)
+    queue_realtime(fake_session)
+    fake_session.queue("getDevicePointMinuteDataList", api_ok({"777_11_0_0": [
+        {"time_stamp": "20261001000500", "p83033": "0", "p83252": "0.5", "p83106": "400"},
+        {"time_stamp": "20261001001000", "p83033": "0", "p83252": "0.5", "p83106": "400"},
+    ]}))
+
+    device = FakeDeviceConfig(env=FULL_ENV, config={"timezone": "UTC"})
+    plugin.generate_image({"ps_id": "777"}, device)
+
+    chart = captured["template_params"]["chart"]
+    assert chart["labels"][:2] == ["00:05", "00:10"]
+    assert chart["grid_import_kw"][0] == 0.4
 
 
 def test_no_power_stations(plugin, fake_session):

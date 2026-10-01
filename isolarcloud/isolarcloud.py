@@ -1,6 +1,6 @@
 from plugins.base_plugin.base_plugin import BasePlugin
 from utils.http_client import get_http_session
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 import json
 import os
@@ -92,7 +92,7 @@ class ISolarCloud(BasePlugin):
                 f"No data for Power Station ID {ps_id}. "
                 "Check the ID, or leave it blank to auto-detect."
             )
-        ess_points = self._fetch_ess_points(api, token, ps_id)
+        ess_key, ess_points = self._fetch_ess(api, token, ps_id)
 
         # Parse metrics
         plant_name = device_points.get("device_name", f"Plant {ps_id}")
@@ -110,6 +110,7 @@ class ISolarCloud(BasePlugin):
             last_refresh = now.strftime("%I:%M %p").lstrip("0")
         current_date = f"{now:%A, %B} {now.day}"
         history = self._record_and_load_history(metrics, now, ps_id)
+        history = self._backfill_history(api, token, ps_id, ess_key, now, tz, history)
 
         template_params = {
             "metrics": metrics,
@@ -118,13 +119,7 @@ class ISolarCloud(BasePlugin):
             "plugin_settings": settings,
             "plant_name": metrics.get("plant_name", "iSolarCloud"),
             "history": history,
-            "chart": {
-                "labels": [h.get("time", "") for h in history],
-                "battery_soc": [h.get("battery_soc", 0) for h in history],
-                "solar_kw": [h.get("solar_kw", 0) for h in history],
-                "grid_import_kw": [h.get("grid_import_kw", 0) for h in history],
-                "grid_export_kw": [h.get("grid_export_kw", 0) for h in history],
-            },
+            "chart": self._chart_series(history),
         }
 
         dimensions = device_config.get_resolution()
@@ -136,19 +131,29 @@ class ISolarCloud(BasePlugin):
             raise RuntimeError("Failed to render solar dashboard, please check logs.")
         return image
 
-    def _fetch_ess_points(self, api, token, ps_id):
+    @staticmethod
+    def _chart_series(history):
+        return {
+            "labels": [h.get("time", "") for h in history],
+            "battery_soc": [h.get("battery_soc", 0) for h in history],
+            "solar_kw": [h.get("solar_kw", 0) for h in history],
+            "grid_import_kw": [h.get("grid_import_kw", 0) for h in history],
+            "grid_export_kw": [h.get("grid_export_kw", 0) for h in history],
+        }
+
+    def _fetch_ess(self, api, token, ps_id):
         try:
             devices = api.get_device_list(token, ps_id)
             for device in devices:
                 key = device.get("ps_key")
                 if str(device.get("device_type")) == str(ESS_DEVICE_TYPE) and key:
-                    return api.get_device_realtime_data(
+                    return key, api.get_device_realtime_data(
                         token, ps_id, ESS_POINT_IDS, device_type=ESS_DEVICE_TYPE, ps_key=key,
                     )
-            return {}
+            return None, {}
         except RuntimeError as e:
             logger.warning("iSolarCloud battery/grid points unavailable, using estimates: %s", e)
-            return {}
+            return None, {}
 
     # ── Metrics parsing ──────────────────────────────────────────────────
 
@@ -237,6 +242,10 @@ class ISolarCloud(BasePlugin):
     # ── History recording ────────────────────────────────────────────────
 
     HISTORY_MAX_ENTRIES = 1440  # one day at 1-minute refreshes
+    HISTORY_CHUNK = timedelta(hours=3)
+    HISTORY_MAX_CHUNKS = 8
+    HISTORY_PLANT_POINTS = ["83033", "83252", "83106"]
+    HISTORY_ESS_POINTS = [ESS_IMPORT_POINT, ESS_EXPORT_POINT]
 
     def _history_path(self, ps_id):
         safe_id = re.sub(r"[^A-Za-z0-9_-]", "", str(ps_id)) or "default"
@@ -279,14 +288,7 @@ class ISolarCloud(BasePlugin):
         # Trim to max entries
         history = history[-self.HISTORY_MAX_ENTRIES:]
 
-        # Save atomically
-        try:
-            tmp = path + ".tmp"
-            with open(tmp, "w") as f:
-                json.dump(history, f)
-            os.replace(tmp, path)
-        except OSError as e:
-            logger.warning("Failed to save history: %s", e)
+        self._save_history(path, history)
 
         # Remove the old shared history file
         legacy = self.get_plugin_dir("history.json")
@@ -297,6 +299,94 @@ class ISolarCloud(BasePlugin):
                 pass
 
         return history
+
+    @staticmethod
+    def _save_history(path, history):
+        """Save a history list atomically."""
+        try:
+            tmp = path + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(history, f)
+            os.replace(tmp, path)
+        except OSError as e:
+            logger.warning("Failed to save history: %s", e)
+
+    def _backfill_history(self, api, token, ps_id, ess_key, now, tz, history):
+        """Merge today's minute samples with later local readings and cache them."""
+        existing_api = {
+            h["ts"]: h for h in history if h.get("src") == "api"
+        }
+        if existing_api:
+            start = max(datetime.fromisoformat(ts) for ts in existing_api)
+        else:
+            start = tz.localize(datetime(now.year, now.month, now.day))
+
+        def fetch(key, points):
+            rows = []
+            window_start = start
+            for _ in range(self.HISTORY_MAX_CHUNKS):
+                if window_start >= now:
+                    break
+                window_end = min(window_start + self.HISTORY_CHUNK, now)
+                rows.extend(api.get_minute_data(
+                    token, key, points,
+                    window_start.astimezone(tz).strftime("%Y%m%d%H%M%S"),
+                    window_end.astimezone(tz).strftime("%Y%m%d%H%M%S"),
+                ))
+                window_start = window_end
+            return rows
+
+        try:
+            plant_rows = fetch(f"{ps_id}_11_0_0", self.HISTORY_PLANT_POINTS)
+            ess_rows = fetch(ess_key, self.HISTORY_ESS_POINTS) if ess_key else []
+        except RuntimeError as e:
+            logger.warning("iSolarCloud history unavailable, using local readings: %s", e)
+            return history
+
+        ess_by_stamp = {row["time_stamp"]: row for row in ess_rows}
+
+        def number(row, key):
+            try:
+                return float(row.get(key, 0))
+            except (TypeError, ValueError):
+                return 0.0
+
+        for row in plant_rows:
+            stamp = row["time_stamp"]
+            local_time = tz.localize(datetime.strptime(stamp, "%Y%m%d%H%M%S"))
+            pv = number(row, "p83033")
+            soc = number(row, "p83252")
+            load = number(row, "p83106")
+            inverter = ess_by_stamp.get(stamp)
+            if inverter is not None:
+                imp = number(inverter, f"p{ESS_IMPORT_POINT}")
+                exp = number(inverter, f"p{ESS_EXPORT_POINT}")
+            else:
+                net = load - pv
+                imp = max(net, 0)
+                exp = max(-net, 0)
+            entry = {
+                "ts": local_time.isoformat(),
+                "time": local_time.strftime("%H:%M"),
+                "battery_soc": int(round(min(max(soc * 100, 0), 100))),
+                "solar_kw": round(pv / 1000, 2),
+                "grid_import_kw": round(imp / 1000, 2),
+                "grid_export_kw": round(exp / 1000, 2),
+                "src": "api",
+            }
+            existing_api[entry["ts"]] = entry
+
+        latest_api = max((datetime.fromisoformat(ts) for ts in existing_api), default=None)
+        merged = list(existing_api.values())
+        merged.extend(
+            h for h in history
+            if h.get("src") != "api"
+            and (latest_api is None or datetime.fromisoformat(h["ts"]) > latest_api)
+        )
+        merged.sort(key=lambda h: datetime.fromisoformat(h["ts"]))
+        merged = merged[-self.HISTORY_MAX_ENTRIES:]
+        self._save_history(self._history_path(ps_id), merged)
+        return merged
 
 
 # ── iSolarCloud Developer API V1 plaintext client ───────────────────────
@@ -365,6 +455,20 @@ class _SungrowAPI:
         if device_list:
             return device_list[0].get("device_point", {})
         return {}
+
+    def get_minute_data(self, token, ps_key, point_ids, start_ts, end_ts, interval=5):
+        """Return 5-minute history rows for one ps_key (window must be <= 3 hours)."""
+        payload = {
+            "appkey": self.appkey,
+            "token": token,
+            "ps_key_list": [ps_key],
+            "points": ",".join(f"p{point_id}" for point_id in point_ids),
+            "start_time_stamp": start_ts,
+            "end_time_stamp": end_ts,
+            "minute_interval": interval,
+        }
+        result = self._api_call("getDevicePointMinuteDataList", payload)
+        return (result.get("result_data") or {}).get(ps_key) or []
 
     def _api_call(self, endpoint, payload):
         """Make a plaintext API call to iSolarCloud."""
