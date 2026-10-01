@@ -82,6 +82,7 @@ def main():
     )
     metrics = isolarcloud.ISolarCloud({"id": "isolarcloud"})._parse_metrics(
         SAMPLE, "My Solar Plant",
+        {"p13149": "0", "p13121": "850", "p13126": "2100", "p13150": "0"},
     )
     history = synthetic_history()
     params = {

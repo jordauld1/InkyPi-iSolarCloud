@@ -67,6 +67,33 @@ def test_battery_soc_renders_without_decimal(plugin):
     assert "72.0" not in html
 
 
+def test_battery_charging_power(plugin):
+    params = dashboard_params(plugin)
+    params["metrics"]["battery_power"] = 2.1
+    assert "Charging 2.1 kW" in render_dashboard(params)
+
+
+def test_battery_discharging_power(plugin):
+    params = dashboard_params(plugin)
+    params["metrics"]["battery_power"] = -0.8
+    assert "Discharging 0.8 kW" in render_dashboard(params)
+
+
+def test_battery_idle_power(plugin):
+    params = dashboard_params(plugin)
+    params["metrics"]["battery_power"] = 0.02
+    assert "Idle" in render_dashboard(params)
+
+
+def test_battery_power_unavailable(plugin):
+    params = dashboard_params(plugin)
+    params["metrics"]["battery_power"] = None
+    html = render_dashboard(params)
+    assert "Charging" not in html
+    assert "Discharging" not in html
+    assert "Idle" not in html
+
+
 def test_total_energy_units(plugin):
     params = dashboard_params(plugin)
     params["metrics"]["total_energy"] = 12400.0

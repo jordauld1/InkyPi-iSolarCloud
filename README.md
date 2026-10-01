@@ -12,7 +12,7 @@ A plugin for [InkyPi](https://github.com/fatihak/InkyPi) that displays real-time
 
 The plugin renders a responsive e-ink dashboard showing:
 
-- **Battery** — state of charge (%) with visual bar
+- **Battery** — state of charge (%) with visual bar, and live charge/discharge power
 - **Solar Today** — daily energy yield (kWh), current generation power (kW)
 - **Grid Import** — energy drawn from the grid today (kWh), current import/export power
 - **Used Today** — household consumption today, as reported by the inverter

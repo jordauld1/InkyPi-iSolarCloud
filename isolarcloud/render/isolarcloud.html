@@ -19,6 +19,11 @@
       <div class="battery-bar-container">
         <div class="battery-bar-fill" style="width: {{ metrics.battery_soc }}%;"></div>
       </div>
+      {% if metrics.battery_power is not none %}
+      <div class="metric-sub">
+        {% if metrics.battery_power > 0.05 %}Charging {{ metrics.battery_power }} kW{% elif metrics.battery_power < -0.05 %}Discharging {{ (metrics.battery_power | abs) }} kW{% else %}Idle{% endif %}
+      </div>
+      {% endif %}
     </div>
 
     <!-- Solar Generated Today -->
