@@ -104,6 +104,21 @@ The plugin authenticates on each refresh and does not persist tokens.
 - **Displays**: All InkyPi-supported e-ink displays (400x300 through 800x480, landscape and portrait)
 - **Dependencies**: No additional Python packages beyond what InkyPi already provides
 
+## Development
+
+Tests run without an InkyPi checkout (InkyPi's modules are stubbed):
+
+    python -m venv .venv
+    .venv/bin/python -m pip install -r requirements-dev.txt   # Windows: .venv\Scripts\python
+    .venv/bin/python -m pytest -q
+
+To preview the dashboard at every supported display size, with a local InkyPi
+checkout alongside this repo:
+
+    .venv/bin/python tools/preview.py --inkypi ../InkyPi
+
+then open `preview/index.html` in a browser.
+
 ## License
 
 This project is licensed under the MIT License — see the [LICENSE.md](LICENSE.md) file for details.
