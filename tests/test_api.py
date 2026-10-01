@@ -62,3 +62,29 @@ def test_plant_list(api, fake_session):
     plants = api.get_plant_list("tok")
     assert len(plants) == 1
     assert plants[0]["ps_id"] == 1
+
+
+def test_device_list(api, fake_session):
+    devices = [{"device_type": 14, "ps_key": "1_14_1_1"}]
+    fake_session.queue("getDeviceList", api_ok({"pageList": devices}))
+
+    assert api.get_device_list("tok", "1") == devices
+    call = fake_session.calls[0]
+    assert call["json"]["ps_id"] == "1"
+    assert call["json"]["curPage"] == 1
+    assert call["json"]["size"] == 100
+
+
+def test_realtime_data_for_device(api, fake_session):
+    fake_session.queue("getDeviceRealTimeData", api_ok({
+        "device_point_list": [{"device_point": {"p13149": "1693"}}],
+    }))
+
+    points = api.get_device_realtime_data(
+        "tok", "1", ["13149"], device_type=14, ps_key="1_14_1_1",
+    )
+
+    call = fake_session.calls[0]
+    assert call["json"]["device_type"] == 14
+    assert call["json"]["ps_key_list"] == ["1_14_1_1"]
+    assert points == {"p13149": "1693"}

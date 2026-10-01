@@ -26,7 +26,16 @@ POINT_IDS = [
     "83102",  # Energy Purchased Today (Wh)
     "83106",  # Load Power (W)
     "83252",  # Battery Level (SOC) (%)
+    "83118",  # Daily Load Consumption (Wh)
 ]
+
+# Hybrid inverter (device_type 14) power points, all W and >= 0
+ESS_DEVICE_TYPE = 14
+ESS_IMPORT_POINT = "13149"     # Purchased power (from grid)
+ESS_EXPORT_POINT = "13121"     # Export power (to grid)
+ESS_CHARGE_POINT = "13126"     # Battery charging power
+ESS_DISCHARGE_POINT = "13150"  # Battery discharging power
+ESS_POINT_IDS = [ESS_IMPORT_POINT, ESS_EXPORT_POINT, ESS_CHARGE_POINT, ESS_DISCHARGE_POINT]
 
 
 class ISolarCloud(BasePlugin):
@@ -71,10 +80,11 @@ class ISolarCloud(BasePlugin):
 
         # Fetch real-time data
         device_points = api.get_device_realtime_data(token, ps_id, POINT_IDS)
+        ess_points = self._fetch_ess_points(api, token, ps_id)
 
         # Parse metrics
         plant_name = device_points.get("device_name", f"Plant {ps_id}")
-        metrics = self._parse_metrics(device_points, plant_name)
+        metrics = self._parse_metrics(device_points, plant_name, ess_points)
 
         # Build template params
         timezone = device_config.get_config("timezone", default="America/New_York")
@@ -114,9 +124,23 @@ class ISolarCloud(BasePlugin):
             raise RuntimeError("Failed to render solar dashboard, please check logs.")
         return image
 
+    def _fetch_ess_points(self, api, token, ps_id):
+        try:
+            devices = api.get_device_list(token, ps_id)
+            for device in devices:
+                key = device.get("ps_key")
+                if str(device.get("device_type")) == str(ESS_DEVICE_TYPE) and key:
+                    return api.get_device_realtime_data(
+                        token, ps_id, ESS_POINT_IDS, device_type=ESS_DEVICE_TYPE, ps_key=key,
+                    )
+            return {}
+        except RuntimeError as e:
+            logger.warning("iSolarCloud battery/grid points unavailable, using estimates: %s", e)
+            return {}
+
     # ── Metrics parsing ──────────────────────────────────────────────────
 
-    def _parse_metrics(self, device_points, plant_name):
+    def _parse_metrics(self, device_points, plant_name, ess_points=None):
         """Extract display metrics from the device real-time data point map."""
 
         def pf(key, default=0.0):
@@ -125,6 +149,15 @@ class ISolarCloud(BasePlugin):
                 return float(device_points.get(key, default))
             except (TypeError, ValueError):
                 return default
+
+        def pf_opt(points, key):
+            """Parse a point value to float, or None when unavailable."""
+            try:
+                return float(points[key])
+            except (KeyError, TypeError, ValueError):
+                return None
+
+        ess = ess_points or {}
 
         # Values from the API are in Wh for energy, W for power
         today_energy_wh = pf("p83022")
@@ -144,24 +177,39 @@ class ISolarCloud(BasePlugin):
         load_power = round(load_power_w / 1000, 2) if load_power_w else 0.0
 
         # Net power: positive = importing, negative = exporting
-        net_power_w = load_power_w - pv_power_w
+        imp = pf_opt(ess, f"p{ESS_IMPORT_POINT}")
+        exp = pf_opt(ess, f"p{ESS_EXPORT_POINT}")
+        if imp is not None and exp is not None:
+            net_power_w = imp - exp
+        else:
+            # Fallback: ignores battery flow
+            net_power_w = load_power_w - pv_power_w
 
-        # Home usage today: solar consumed locally + grid import
-        today_load = round(today_energy - today_grid_feed + today_grid_import, 1)
-        if today_load < 0:
-            today_load = 0.0
+        chg = pf_opt(ess, f"p{ESS_CHARGE_POINT}")
+        dis = pf_opt(ess, f"p{ESS_DISCHARGE_POINT}")
+        if chg is not None or dis is not None:
+            battery_power = round(((chg or 0.0) - (dis or 0.0)) / 1000, 2)
+        else:
+            battery_power = None
 
-        # Self-sufficiency: proportion of load covered by solar
+        load_wh = pf_opt(device_points, "p83118")
+        if load_wh is not None:
+            today_load = round(max(load_wh / 1000, 0.0), 1)
+        else:
+            # Fallback: includes battery charge
+            today_load = round(today_energy - today_grid_feed + today_grid_import, 1)
+            if today_load < 0:
+                today_load = 0.0
+
+        # Self-sufficiency: share of household use not drawn from the grid
         self_sufficiency = 0.0
-        if today_load > 0 and today_energy > 0:
-            solar_self_used = today_energy - today_grid_feed
-            if solar_self_used > 0:
-                self_sufficiency = round((solar_self_used / today_load) * 100, 1)
+        if today_load > 0:
+            self_sufficiency = round(min(max((today_load - today_grid_import) / today_load * 100, 0.0), 100.0), 1)
 
         return {
             "plant_name": plant_name,
             "curr_power": curr_power,
-            "battery_power": 0.0,
+            "battery_power": battery_power,
             "grid_power": round(net_power_w / 1000, 2),
             "load_power": load_power,
             "battery_soc": int(round(min(max(battery_soc, 0.0), 100.0))),
@@ -275,13 +323,27 @@ class _SungrowAPI:
         data = result.get("result_data", {})
         return data.get("pageList", [])
 
-    def get_device_realtime_data(self, token, ps_id, point_ids):
-        """Fetch real-time data points for a plant."""
-        ps_key = f"{ps_id}_11_0_0"
+    def get_device_list(self, token, ps_id):
+        """Return devices belonging to a power station."""
         payload = {
             "appkey": self.appkey,
             "token": token,
-            "device_type": 11,
+            "ps_id": ps_id,
+            "curPage": 1,
+            "size": 100,
+        }
+        result = self._api_call("getDeviceList", payload)
+        data = result.get("result_data", {})
+        return data.get("pageList", [])
+
+    def get_device_realtime_data(self, token, ps_id, point_ids, device_type=11, ps_key=None):
+        """Fetch real-time data points for a plant or device."""
+        if ps_key is None:
+            ps_key = f"{ps_id}_11_0_0"
+        payload = {
+            "appkey": self.appkey,
+            "token": token,
+            "device_type": device_type,
             "point_id_list": point_ids,
             "ps_key_list": [ps_key],
         }

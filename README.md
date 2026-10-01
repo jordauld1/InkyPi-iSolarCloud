@@ -15,9 +15,9 @@ The plugin renders a responsive e-ink dashboard showing:
 - **Battery** — state of charge (%) with visual bar
 - **Solar Today** — daily energy yield (kWh), current generation power (kW)
 - **Grid Import** — energy drawn from the grid today (kWh), current import/export power
-- **Used Today** — total household consumption today
+- **Used Today** — household consumption today, as reported by the inverter
 - **Exported** — energy fed to grid today
-- **Self Use** — percentage of load covered by solar
+- **Self Use** — share of today's household use not drawn from the grid (solar plus battery)
 - **All Time** — cumulative energy production
 
 Over the course of a day, a timeseries chart builds up showing battery SOC, solar generation, grid import, and grid export.
@@ -86,6 +86,8 @@ In the InkyPi web interface, select the **iSolarCloud** plugin and set:
 ## API Details
 
 This plugin uses the [iSolarCloud Open API V1](https://developer.isolarcloud.com) (plaintext authentication). It fetches plant-level real-time data using the `getDeviceRealTimeData` endpoint.
+
+On hybrid (battery) systems it also reads the inverter's grid and battery power via getDeviceList and getDeviceRealTimeData, so live grid flow accounts for the battery.
 
 **Regional gateways:**
 

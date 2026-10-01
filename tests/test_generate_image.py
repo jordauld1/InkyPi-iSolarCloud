@@ -2,7 +2,7 @@ from datetime import datetime
 
 import pytest
 
-from conftest import FakeDeviceConfig, FULL_ENV, SAMPLE_POINTS, api_ok
+from conftest import FakeDeviceConfig, FakeResponse, FULL_ENV, SAMPLE_POINTS, api_ok
 
 
 def capture_render(plugin, monkeypatch, result=None):
@@ -28,6 +28,7 @@ def queue_realtime(fake_session, points=None):
     fake_session.queue("getDeviceRealTimeData", api_ok({
         "device_point_list": [{"device_point": points if points is not None else SAMPLE_POINTS}],
     }))
+    fake_session.queue("getDeviceList", api_ok({"pageList": []}))
 
 
 def test_missing_credentials(plugin, fake_session):
@@ -105,3 +106,49 @@ def test_vertical_orientation(plugin, fake_session, monkeypatch):
     plugin.generate_image({"ps_id": "777"}, device)
 
     assert captured["dimensions"] == (480, 800)
+
+
+def test_ess_points_used(plugin, fake_session, monkeypatch):
+    captured, sentinel = capture_render(plugin, monkeypatch)
+    queue_login(fake_session)
+    fake_session.queue("getDeviceRealTimeData", api_ok({
+        "device_point_list": [{"device_point": SAMPLE_POINTS}],
+    }))
+    fake_session.queue("getDeviceList", api_ok({"pageList": [
+        {"device_type": 22, "ps_key": "777_22_247_1"},
+        {"device_type": 14, "ps_key": "777_14_1_1"},
+    ]}))
+    fake_session.queue("getDeviceRealTimeData", api_ok({
+        "device_point_list": [{"device_point": {
+            "p13149": "0", "p13121": "300", "p13126": "1000", "p13150": "0",
+        }}],
+    }))
+
+    result = plugin.generate_image({"ps_id": "777"}, FakeDeviceConfig(env=FULL_ENV))
+
+    realtime_calls = [
+        c for c in fake_session.calls if c["endpoint"] == "getDeviceRealTimeData"
+    ]
+    assert len(realtime_calls) == 2
+    assert realtime_calls[1]["json"]["ps_key_list"] == ["777_14_1_1"]
+    assert realtime_calls[1]["json"]["device_type"] == 14
+    assert result is sentinel
+    metrics = captured["template_params"]["metrics"]
+    assert metrics["grid_power"] == -0.3
+    assert metrics["battery_power"] == 1.0
+
+
+def test_ess_failure_falls_back(plugin, fake_session, monkeypatch):
+    captured, sentinel = capture_render(plugin, monkeypatch)
+    queue_login(fake_session)
+    fake_session.queue("getDeviceRealTimeData", api_ok({
+        "device_point_list": [{"device_point": SAMPLE_POINTS}],
+    }))
+    fake_session.queue("getDeviceList", FakeResponse(200, {
+        "result_code": "E00001", "result_msg": "nope",
+    }))
+
+    result = plugin.generate_image({"ps_id": "777"}, FakeDeviceConfig(env=FULL_ENV))
+
+    assert result is sentinel
+    assert captured["template_params"]["metrics"]["grid_power"] == -0.85

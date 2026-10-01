@@ -70,3 +70,52 @@ def test_unparseable_points(plugin):
 def test_plant_name(plugin):
     m = plugin._parse_metrics(SAMPLE_POINTS, "My Plant")
     assert m["plant_name"] == "My Plant"
+
+
+def test_grid_power_from_ess_import(plugin):
+    ess = {"p13149": "1693", "p13121": "0", "p13126": "0", "p13150": "0"}
+    m = plugin._parse_metrics(SAMPLE_POINTS, "x", ess)
+    assert m["grid_power"] == 1.69
+
+
+def test_grid_power_from_ess_export(plugin):
+    ess = {"p13149": "0", "p13121": "500", "p13126": "0", "p13150": "0"}
+    m = plugin._parse_metrics(SAMPLE_POINTS, "x", ess)
+    assert m["grid_power"] == -0.5
+
+
+def test_battery_discharge_not_counted_as_import(plugin):
+    points = {"p83033": "0", "p83106": "1000"}
+    ess = {"p13149": "0", "p13121": "0", "p13126": "0", "p13150": "1000"}
+    m = plugin._parse_metrics(points, "x", ess)
+    assert m["grid_power"] == 0.0
+    assert m["battery_power"] == -1.0
+
+
+def test_battery_power_charging(plugin):
+    ess = {"p13149": "0", "p13121": "0", "p13126": "2100", "p13150": "0"}
+    m = plugin._parse_metrics(SAMPLE_POINTS, "x", ess)
+    assert m["battery_power"] == 2.1
+
+
+def test_fallback_without_ess(plugin):
+    m = plugin._parse_metrics(SAMPLE_POINTS, "x")
+    assert m["grid_power"] == -0.85
+    assert m["battery_power"] is None
+
+
+def test_today_load_uses_p83118(plugin):
+    m = plugin._parse_metrics({**SAMPLE_POINTS, "p83118": "15000"}, "x")
+    assert m["today_load"] == 15.0
+    assert m["self_sufficiency"] == 92.7
+
+
+def test_today_load_fallback(plugin):
+    m = plugin._parse_metrics(SAMPLE_POINTS, "x")
+    assert m["today_load"] == 13.3
+    assert m["self_sufficiency"] == 91.7
+
+
+def test_self_sufficiency_clamped(plugin):
+    m = plugin._parse_metrics({"p83118": "1000", "p83102": "3000"}, "x")
+    assert m["self_sufficiency"] == 0.0
