@@ -20,6 +20,26 @@ def test_sample_metrics(plugin):
     assert m["battery_soc"] == 72
 
 
+def test_battery_soc_is_int(plugin):
+    value = plugin._parse_metrics(SAMPLE_POINTS, "x")["battery_soc"]
+    assert value == 72
+    assert isinstance(value, int)
+
+
+def test_battery_soc_clamped_high(plugin):
+    assert plugin._parse_metrics({"p83252": "1.2"}, "x")["battery_soc"] == 100
+
+
+def test_battery_soc_clamped_low(plugin):
+    assert plugin._parse_metrics({"p83252": "-0.1"}, "x")["battery_soc"] == 0
+
+
+def test_battery_soc_rounds(plugin):
+    value = plugin._parse_metrics({"p83252": "0.725"}, "x")["battery_soc"]
+    assert isinstance(value, int)
+    assert 72 <= value <= 73
+
+
 def test_empty_points(plugin):
     m = plugin._parse_metrics({}, "My Plant")
     for key in (

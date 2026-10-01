@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import pytest
 
 from conftest import FakeDeviceConfig, FULL_ENV, SAMPLE_POINTS, api_ok
@@ -58,6 +60,22 @@ def test_explicit_plant_skips_lookup(plugin, fake_session, monkeypatch):
     plugin.generate_image({"ps_id": "777"}, FakeDeviceConfig(env=FULL_ENV))
 
     assert all(c["endpoint"] != "getPowerStationList" for c in fake_session.calls)
+
+
+def test_current_date_not_zero_padded(plugin, plugin_mod, fake_session, monkeypatch):
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return tz.localize(datetime(2026, 10, 1, 9, 5))
+
+    monkeypatch.setattr(plugin_mod, "datetime", FixedDatetime)
+    captured, _ = capture_render(plugin, monkeypatch)
+    queue_login(fake_session)
+    queue_realtime(fake_session)
+
+    plugin.generate_image({"ps_id": "777"}, FakeDeviceConfig(env=FULL_ENV))
+
+    assert captured["template_params"]["current_date"] == "Thursday, October 1"
 
 
 def test_no_power_stations(plugin, fake_session):

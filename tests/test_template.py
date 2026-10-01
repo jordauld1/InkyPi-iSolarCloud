@@ -45,6 +45,12 @@ def test_battery_bar(plugin):
     assert "width: 72" in html
 
 
+def test_battery_soc_renders_without_decimal(plugin):
+    html = render_dashboard(dashboard_params(plugin))
+    assert '72<span class="metric-unit">%' in html
+    assert "72.0" not in html
+
+
 def test_total_energy_units(plugin):
     params = dashboard_params(plugin)
     params["metrics"]["total_energy"] = 12400.0

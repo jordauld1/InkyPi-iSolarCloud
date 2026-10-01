@@ -85,7 +85,7 @@ class ISolarCloud(BasePlugin):
             last_refresh = now.strftime("%H:%M")
         else:
             last_refresh = now.strftime("%I:%M %p").lstrip("0")
-        current_date = now.strftime("%A, %B %d")
+        current_date = f"{now:%A, %B} {now.day}"
 
         template_params = {
             "metrics": metrics,
@@ -155,7 +155,7 @@ class ISolarCloud(BasePlugin):
             "battery_power": 0.0,
             "grid_power": round(net_power_w / 1000, 2),
             "load_power": load_power,
-            "battery_soc": round(battery_soc, 0),
+            "battery_soc": int(round(min(max(battery_soc, 0.0), 100.0))),
             "today_energy": today_energy,
             "today_grid_feed": today_grid_feed,
             "today_grid_import": today_grid_import,
