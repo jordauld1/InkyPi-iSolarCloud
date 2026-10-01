@@ -9,8 +9,8 @@ your row when done.
 
 | Plan | Title | Priority | Effort | Depends on | Status |
 |------|-------|----------|--------|------------|--------|
-| 001 | [Test suite, CI and render preview tool](001-test-baseline-and-preview.md) | P1 | M | — | TODO |
-| 002 | [Fix README install command](002-fix-readme-install-command.md) | P1 | S | — | TODO |
+| 001 | [Test suite, CI and render preview tool](001-test-baseline-and-preview.md) | P1 | M | — | DONE |
+| 002 | [Fix README install command](002-fix-readme-install-command.md) | P1 | S | — | DONE (Codex gpt-6-luna) |
 | 003 | [Battery SOC as whole number; unpadded date](003-battery-soc-display.md) | P1 | S | 001 | TODO |
 | 004 | [Full-day, per-plant, atomic chart history; `tojson`](004-history-fixes.md) | P2 | S | 001 | TODO |
 | 005 | [Battery-aware grid power and daily usage](005-battery-aware-grid-and-usage.md) | P1 | M | 001 (003 first) — **human checkpoint** | TODO |
