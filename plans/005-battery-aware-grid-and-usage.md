@@ -23,7 +23,7 @@
 - **Priority**: P1
 - **Effort**: M
 - **Risk**: MED (changes the headline numbers; depends on live API facts)
-- **Depends on**: plans/001-test-baseline-and-preview.md. Plan 003 should land first (same function, trivial conflict otherwise).
+- **Depends on**: plans/001 and plans/003 (both DONE). Part A DONE; Part B revised 2026-10-01 after the live discovery run.
 - **Category**: bug
 - **Planned at**: commit `b655bb3`, 2026-10-01
 
@@ -208,94 +208,126 @@ Tests:
 `plans/README.md` and report: "Part A done. A human must run
 `tools/discover_points.py` and fill in the Discovery results table."
 
-## Discovery results (filled in by a human)
+## Discovery results (filled in 2026-10-01 from a live run; the plan was revised to match)
 
-> **For the human running the script:** run it twice if you can: once in
-> daylight while the iSolarCloud app's energy-flow screen shows power going
-> **to** the grid, and once at night while it shows power coming **from** the
-> grid (or with the battery discharging). Each time, note the app's own
-> numbers alongside the script output. Paste only the rows you used, not your
-> ps_id.
->
-> - **Grid power point**: the point whose magnitude matches the app's grid
->   flow. Note whether it is positive or negative while *importing*, and
->   whether it is in W (matches `p83106` load in size) or kW.
-> - **Daily load energy point**: the point matching the app's "Consumption
->   today". Note Wh or kWh.
-> - **Battery power** (for plan 006): the point(s) matching the app's battery
->   flow. There may be one signed point, or separate charge and discharge points.
+Ran `tools/discover_points.py` (plant level, device_type 11) plus a device-level
+scan and a day of 5-minute history, against the owner's account (Residential
+ESS, one Sungrow hybrid inverter). App reference at the same moment: solar 0 W,
+load 1.8 kW, battery 0% and idle, grid **importing** 1.8 kW; today production
+4.3 kWh and consumption 7.9 kWh.
 
-| Quantity | Point id | Unit | Sign / notes | Sample (script value ↔ app value) |
-|---|---|---|---|---|
-| Grid power | | W / kW | `+` or `-` when importing | |
-| Daily load energy | | Wh / kWh | | |
-| Battery power (signed) *or* charge power | | W / kW | sign when charging | |
-| Battery discharge power (if separate) | | W / kW | | |
+**Key finding: there is no plant-level grid power point.** `p83549` isn't
+returned for this plant. Live grid and battery power only exist as
+**device-level** points on the hybrid inverter (device_type 14). Find its
+`ps_key` with the Open API `getDeviceList` (`{"appkey", "token", "ps_id", "curPage": 1, "size": 100}`,
+which returns `result_data.pageList[]` with `device_type` and `ps_key`, e.g. `"<ps_id>_14_1_1"`).
 
-## Part B — use the discovered points
+| Quantity | Point | Level | Unit | Sign / notes | Evidence |
+|---|---|---|---|---|---|
+| Grid import power | `p13149` | device 14 | W | always ≥ 0 | 1693 at night, equal to load, with pv 0 and battery idle (app: importing 1.8 kW) |
+| Grid export power | `p13121` | device 14 | W | always ≥ 0 | 52 at 16:00 while exporting |
+| Battery charging power | `p13126` | device 14 | W | always ≥ 0 | 1993 at 16:00 with pv 2859 |
+| Battery discharging power | `p13150` | device 14 | W | always ≥ 0 | 1378 at 18:00 with pv 0 |
+| Daily load energy | `p83118` | plant (11) | Wh | | 8000. GoSungrow names it "Energy Used"; the app showed 7.9 kWh |
 
-Only start when the first two rows of the table above are filled in. If the
-**Grid power** row says "not found", do steps 3–4 for daily load only,
-leave the grid derivation unchanged, and note that in the report.
+Validation: across 94 five-minute samples today,
+`pv(p83033) + import + discharge − (load(p13119) + export + charge)` stayed
+within ±108 W, and the daily counters balance exactly (4.3 + 3.2 + 2.6 = 8.0 + 0.0 + 2.1).
+
+## Part B — use the discovered points (revised design)
+
+Part A is already merged. Its files, `tools/discover_points.py` and
+`tests/test_discover_points.py`, are out of scope for Part B.
+
+Design: after the plant call, make two more Open API calls. `getDeviceList`
+finds the hybrid inverter (`device_type` 14). `getDeviceRealTimeData` reads
+its four power points. Grid power is `import − export`, and battery power is
+`charge − discharge`. Both are exact, with no sign ambiguity. If the plant has
+no device_type 14, or either call fails, **fall back** to today's battery-blind
+derivation and log a warning. The dashboard must never fail because of these
+optional calls.
+
+**Revised scope for Part B**: `isolarcloud/isolarcloud.py`,
+`tests/test_metrics.py`, `tests/test_api.py`, `tests/test_generate_image.py`,
+and `README.md` (Dashboard bullets and the API Details paragraph only).
 
 ### Step 3: Tests first
 
-In `tests/test_metrics.py` add (substituting the discovered ids, sign and units):
-1. `test_grid_power_uses_grid_point_when_present`: a night case,
-   `{"p83033": "0", "p83106": "1000", "p<GRID>": <value meaning ~0 W>, ...}` → `grid_power == 0.0`
-   (not `1.0`, which is what the battery-blind formula gives).
-2. `test_grid_power_import_sign`: the grid point at a value meaning 500 W *importing* → `grid_power == 0.5`.
-3. `test_grid_power_export_sign`: the grid point at a value meaning 500 W *exporting* → `grid_power == -0.5`.
-4. `test_grid_power_falls_back_without_point`: `SAMPLE_POINTS` (no grid point) → `grid_power == -0.85`, unchanged.
-5. `test_today_load_uses_load_point`: `SAMPLE_POINTS` plus the load point meaning 15.0 kWh → `today_load == 15.0`,
-   and `self_sufficiency == round((15.0 - 1.1) / 15.0 * 100, 1)` (= 92.7).
-6. `test_today_load_falls_back_without_point`: `SAMPLE_POINTS` → `today_load == 13.3`, `self_sufficiency == 91.7`, unchanged.
-7. `test_self_sufficiency_clamped`: load point meaning 1.0 kWh with import 3.0 kWh → `self_sufficiency == 0.0` (never negative).
+`tests/test_api.py`:
+1. `test_device_list`: queue `getDeviceList` → `api_ok({"pageList": [{"device_type": 14, "ps_key": "1_14_1_1"}]})`.
+   `api.get_device_list("tok", "1")` returns that list, and the request JSON has `ps_id == "1"`, `curPage == 1`, `size == 100`.
+2. `test_realtime_data_for_device`: `api.get_device_realtime_data("tok", "1", ["13149"], device_type=14, ps_key="1_14_1_1")`
+   sends `device_type == 14` and `ps_key_list == ["1_14_1_1"]`.
+   The existing call without these kwargs still sends `"<ps_id>_11_0_0"` and 11. Don't change that test.
 
-**Verify**: the new tests fail, and the old ones pass.
+`tests/test_metrics.py`. `_parse_metrics` gains an optional third argument `ess_points`:
+3. `test_grid_power_from_ess_import`: `SAMPLE_POINTS` + ess `{"p13149": "1693", "p13121": "0", "p13126": "0", "p13150": "0"}` → `grid_power == 1.69`.
+4. `test_grid_power_from_ess_export`: ess `{"p13149": "0", "p13121": "500", "p13126": "0", "p13150": "0"}` → `grid_power == -0.5`.
+5. `test_battery_discharge_not_counted_as_import`: night, plant `{"p83033": "0", "p83106": "1000"}`, ess import 0, export 0, charge 0, discharge 1000
+   → `grid_power == 0.0` (the old formula gives 1.0) and `battery_power == -1.0`.
+6. `test_battery_power_charging`: ess charge 2100, discharge 0 (import/export 0) → `battery_power == 2.1`.
+7. `test_fallback_without_ess`: `_parse_metrics(SAMPLE_POINTS, "x")`, no ess → `grid_power == -0.85` (unchanged) and `battery_power is None`.
+8. `test_today_load_uses_p83118`: `SAMPLE_POINTS` + `{"p83118": "15000"}` → `today_load == 15.0`, `self_sufficiency == 92.7`.
+9. `test_today_load_fallback`: `SAMPLE_POINTS` → `today_load == 13.3`, `self_sufficiency == 91.7` (unchanged).
+10. `test_self_sufficiency_clamped`: `{"p83118": "1000", "p83102": "3000"}` → `self_sufficiency == 0.0`.
+
+`tests/test_generate_image.py`:
+- Change the helper `queue_realtime` so it also queues
+  `fake_session.queue("getDeviceList", api_ok({"pageList": []}))` (no ESS → fallback). All existing tests must keep passing unchanged.
+- 11. `test_ess_points_used`: queue login, plant realtime (`SAMPLE_POINTS`), `getDeviceList` with
+  `[{"device_type": 22, "ps_key": "777_22_247_1"}, {"device_type": 14, "ps_key": "777_14_1_1"}]`, then a second
+  `getDeviceRealTimeData` returning device_point `{"p13149": "0", "p13121": "300", "p13126": "1000", "p13150": "0"}`.
+  Run with `ps_id "777"`. Assert the second realtime call used `ps_key_list == ["777_14_1_1"]` and `device_type == 14`;
+  `template_params["metrics"]["grid_power"] == -0.3`; and `template_params["metrics"]["battery_power"] == 1.0`.
+  (The per-endpoint FIFO in `FakeSession` serves the plant response first, then the device one.)
+- 12. `test_ess_failure_falls_back`: the same, but `getDeviceList` returns `FakeResponse(200, {"result_code": "E00001", "result_msg": "nope"})`
+  and there's no second realtime response. `generate_image` still returns the sentinel, and `metrics["grid_power"] == -0.85`.
+
+**Verify**: the new tests fail, and every pre-existing test passes.
 
 ### Step 4: Implement
 
-Add module constants after `POINT_IDS`, filled from the table:
-
-```python
-# Battery-aware points (confirmed against a live account, see plans/005)
-GRID_POWER_POINT = "<id>"        # grid active power
-GRID_POWER_IMPORT_SIGN = <1|-1>  # multiply so that positive = importing
-GRID_POWER_TO_W = <1|1000>       # 1 if the point is W, 1000 if kW
-LOAD_ENERGY_POINT = "<id>"       # daily household consumption
-LOAD_ENERGY_TO_WH = <1|1000>     # 1 if Wh, 1000 if kWh
-```
-
-Append both ids to `POINT_IDS` with trailing comments, in the existing style.
-
-In `_parse_metrics`:
-- Add a helper next to `pf`:
-  ```python
-        def pf_opt(key):
-            """Parse a point value to float, or None if missing/unparseable."""
-            try:
-                value = device_points.get(key)
-                return None if value is None else float(value)
-            except (TypeError, ValueError):
-                return None
-  ```
-- Grid: `grid_raw = pf_opt(f"p{GRID_POWER_POINT}")`. If not `None`,
-  `net_power_w = grid_raw * GRID_POWER_TO_W * GRID_POWER_IMPORT_SIGN`.
-  Otherwise keep `net_power_w = load_power_w - pv_power_w`, with the comment
-  `# Fallback: ignores battery flow`.
-- Load: `load_raw = pf_opt(f"p{LOAD_ENERGY_POINT}")`. If not `None`,
-  `today_load = round(max(load_raw * LOAD_ENERGY_TO_WH / 1000, 0.0), 1)`.
-  Otherwise use the existing derivation, with the comment `# Fallback: includes battery charge`.
-- Self-sufficiency, with one formula for both paths:
-  ```python
-        # Self-sufficiency: share of household use not drawn from the grid
-        self_sufficiency = 0.0
-        if today_load > 0:
-            self_sufficiency = round(min(max((today_load - today_grid_import) / today_load * 100, 0.0), 100.0), 1)
-  ```
-  On the fallback path this equals the old formula, because the old load
-  derivation is `solar − export + import`. Test 6 proves it.
+1. Constants after `POINT_IDS`, matching its comment style:
+   ```python
+   # Hybrid inverter (device_type 14) power points, all W and >= 0
+   ESS_DEVICE_TYPE = 14
+   ESS_IMPORT_POINT = "13149"     # Purchased power (from grid)
+   ESS_EXPORT_POINT = "13121"     # Export power (to grid)
+   ESS_CHARGE_POINT = "13126"     # Battery charging power
+   ESS_DISCHARGE_POINT = "13150"  # Battery discharging power
+   ESS_POINT_IDS = [ESS_IMPORT_POINT, ESS_EXPORT_POINT, ESS_CHARGE_POINT, ESS_DISCHARGE_POINT]
+   ```
+   Append `"83118",  # Daily Load Consumption (Wh)` to `POINT_IDS`.
+2. `_SungrowAPI`:
+   - Add `get_device_list(self, token, ps_id)` (`getDeviceList`, payload as above) → `result_data.pageList` or `[]`.
+   - Change `get_device_realtime_data(self, token, ps_id, point_ids, device_type=11, ps_key=None)`.
+     `ps_key` defaults to `f"{ps_id}_11_0_0"`, and the payload's `device_type` uses the argument.
+3. `ISolarCloud._fetch_ess_points(self, api, token, ps_id)`: call `get_device_list`, pick the first
+   device with `str(d.get("device_type")) == str(ESS_DEVICE_TYPE)` and a non-empty `ps_key`, then
+   return `api.get_device_realtime_data(token, ps_id, ESS_POINT_IDS, device_type=ESS_DEVICE_TYPE, ps_key=key)`.
+   Return `{}` if there's no such device. Wrap the whole body in `try/except RuntimeError as e`:
+   log `logger.warning("iSolarCloud battery/grid points unavailable, using estimates: %s", e)` and return `{}`.
+4. In `generate_image`, right after the plant `get_device_realtime_data` call:
+   `ess_points = self._fetch_ess_points(api, token, ps_id)`. Then pass it:
+   `metrics = self._parse_metrics(device_points, plant_name, ess_points)`.
+5. `_parse_metrics(self, device_points, plant_name, ess_points=None)`:
+   - Add a helper `pf_opt(points, key)`, returning a float or `None` when the key is missing or unparseable.
+   - `imp = pf_opt(ess, f"p{ESS_IMPORT_POINT}")`, `exp = ...`. If **both** are not `None`,
+     `net_power_w = imp - exp`. Otherwise keep `net_power_w = load_power_w - pv_power_w`,
+     with the comment `# Fallback: ignores battery flow`.
+   - `chg`, `dis` the same way. If **either** is not `None`,
+     `battery_power = round(((chg or 0.0) - (dis or 0.0)) / 1000, 2)`; otherwise `battery_power = None`.
+     Return it as `"battery_power"`, replacing the hardcoded `0.0`. Positive means charging.
+   - Load: `load_wh = pf_opt(device_points, "p83118")`. If not `None`,
+     `today_load = round(max(load_wh / 1000, 0.0), 1)`. Otherwise use the existing derivation,
+     with the comment `# Fallback: includes battery charge`.
+   - Self-sufficiency (one formula for both paths; on the fallback path it equals the old one):
+     ```python
+             # Self-sufficiency: share of household use not drawn from the grid
+             self_sufficiency = 0.0
+             if today_load > 0:
+                 self_sufficiency = round(min(max((today_load - today_grid_import) / today_load * 100, 0.0), 100.0), 1)
+     ```
 
 **Verify**: `.venv/Scripts/python -m pytest -q` → all pass.
 
@@ -305,19 +337,23 @@ In `README.md`'s Dashboard bullets, change:
 - `**Used Today** — total household consumption today` → `**Used Today** — household consumption today, as reported by the inverter`
 - `**Self Use** — percentage of load covered by solar` → `**Self Use** — share of today's household use not drawn from the grid (solar plus battery)`
 
-**Verify**: `grep -n "not drawn from the grid" README.md` → 1 match.
+In the "API Details" section, after the paragraph that mentions `getDeviceRealTimeData`, add one paragraph:
+`On hybrid (battery) systems it also reads the inverter's grid and battery power via getDeviceList and getDeviceRealTimeData, so live grid flow accounts for the battery.`
+
+**Verify**: `grep -n "not drawn from the grid" README.md` → 1 match; `grep -n "getDeviceList" README.md` → 1 match.
 
 ## Test plan
 
 - Part A: 2 tests for the discovery script's pure functions.
-- Part B: 7 metric tests: grid point used, both signs, fallback, load point used, load fallback, clamp.
-  Model them on the existing `tests/test_metrics.py`.
+- Part B: 12 tests (2 API, 8 metrics, 2 generate_image), as listed in step 3.
+  Model them on the existing tests in the same files.
 
 ## Done criteria
 
 - [ ] `.venv/Scripts/python -m pytest -q` exits 0
 - [ ] `tools/discover_points.py` with no env exits 2 and prints no secret values
-- [ ] `grep -n "GRID_POWER_POINT\|LOAD_ENERGY_POINT" isolarcloud/isolarcloud.py` → constants defined and used
+- [ ] `grep -n "ESS_POINT_IDS\|_fetch_ess_points" isolarcloud/isolarcloud.py` → defined and used
+- [ ] `grep -n '"battery_power": 0.0' isolarcloud/isolarcloud.py` → no output
 - [ ] The Discovery results table is filled in (by the human) before the Part B commit
 - [ ] Only in-scope files changed
 - [ ] `plans/README.md` row 005 updated (BLOCKED after Part A, DONE after Part B)
