@@ -20,6 +20,13 @@ def dashboard_params(plugin, history_count=2):
         "last_refresh": "12:00 PM",
         "plant_name": "My Plant",
         "history": history,
+        "chart": {
+            "labels": [h.get("time", "") for h in history],
+            "battery_soc": [h.get("battery_soc", 0) for h in history],
+            "solar_kw": [h.get("solar_kw", 0) for h in history],
+            "grid_import_kw": [h.get("grid_import_kw", 0) for h in history],
+            "grid_export_kw": [h.get("grid_export_kw", 0) for h in history],
+        },
     }
 
 
@@ -27,6 +34,15 @@ def test_chart_with_two_entries(plugin):
     html = render_dashboard(dashboard_params(plugin, 2))
     assert 'id="solarChart"' in html
     assert "chart.js" in html
+
+
+def test_chart_data_is_json(plugin):
+    params = dashboard_params(plugin)
+    params["history"][0]["time"] = '06:00"</script>'
+    params["chart"]["labels"][0] = '06:00"</script>'
+    html = render_dashboard(params)
+    assert '06:00"</script>' not in html
+    assert "</script>" in html
 
 
 def test_chart_absent_with_one_entry(plugin):

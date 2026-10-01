@@ -83,9 +83,17 @@ def main():
     metrics = isolarcloud.ISolarCloud({"id": "isolarcloud"})._parse_metrics(
         SAMPLE, "My Solar Plant",
     )
+    history = synthetic_history()
     params = {
         "metrics": metrics,
-        "history": synthetic_history(),
+        "history": history,
+        "chart": {
+            "labels": [h.get("time", "") for h in history],
+            "battery_soc": [h.get("battery_soc", 0) for h in history],
+            "solar_kw": [h.get("solar_kw", 0) for h in history],
+            "grid_import_kw": [h.get("grid_import_kw", 0) for h in history],
+            "grid_export_kw": [h.get("grid_export_kw", 0) for h in history],
+        },
         "plant_name": "My Solar Plant",
         "current_date": "Sunday, March 15",
         "last_refresh": "10:45 PM",

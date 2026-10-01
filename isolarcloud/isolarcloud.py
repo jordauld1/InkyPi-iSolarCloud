@@ -5,6 +5,7 @@ import logging
 import json
 import os
 import pytz
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,7 @@ class ISolarCloud(BasePlugin):
         else:
             last_refresh = now.strftime("%I:%M %p").lstrip("0")
         current_date = f"{now:%A, %B} {now.day}"
+        history = self._record_and_load_history(metrics, now, ps_id)
 
         template_params = {
             "metrics": metrics,
@@ -93,7 +95,14 @@ class ISolarCloud(BasePlugin):
             "last_refresh": last_refresh,
             "plugin_settings": settings,
             "plant_name": metrics.get("plant_name", "iSolarCloud"),
-            "history": self._record_and_load_history(metrics, now),
+            "history": history,
+            "chart": {
+                "labels": [h.get("time", "") for h in history],
+                "battery_soc": [h.get("battery_soc", 0) for h in history],
+                "solar_kw": [h.get("solar_kw", 0) for h in history],
+                "grid_import_kw": [h.get("grid_import_kw", 0) for h in history],
+                "grid_export_kw": [h.get("grid_export_kw", 0) for h in history],
+            },
         }
 
         dimensions = device_config.get_resolution()
@@ -167,14 +176,15 @@ class ISolarCloud(BasePlugin):
 
     # ── History recording ────────────────────────────────────────────────
 
-    HISTORY_MAX_ENTRIES = 144  # ~24h at 10-min intervals
+    HISTORY_MAX_ENTRIES = 1440  # one day at 1-minute refreshes
 
-    def _history_path(self):
-        return self.get_plugin_dir("history.json")
+    def _history_path(self, ps_id):
+        safe_id = re.sub(r"[^A-Za-z0-9_-]", "", str(ps_id)) or "default"
+        return self.get_plugin_dir(f"history_{safe_id}.json")
 
-    def _record_and_load_history(self, metrics, now):
-        """Append current reading to history file and return entries for today."""
-        path = self._history_path()
+    def _record_and_load_history(self, metrics, now, ps_id):
+        """Append current reading to this plant's history file and return today's entries."""
+        path = self._history_path(ps_id)
 
         # Load existing history
         history = []
@@ -184,6 +194,15 @@ class ISolarCloud(BasePlugin):
                     history = json.load(f)
             except (json.JSONDecodeError, OSError):
                 history = []
+        if not isinstance(history, list):
+            history = []
+
+        # Filter to today before applying the entry cap
+        today_str = now.strftime("%Y-%m-%d")
+        history = [
+            h for h in history
+            if isinstance(h, dict) and str(h.get("ts", "")).startswith(today_str)
+        ]
 
         # Append current reading
         grid_power = metrics.get("grid_power", 0)
@@ -198,19 +217,24 @@ class ISolarCloud(BasePlugin):
         history.append(entry)
 
         # Trim to max entries
-        if len(history) > self.HISTORY_MAX_ENTRIES:
-            history = history[-self.HISTORY_MAX_ENTRIES:]
+        history = history[-self.HISTORY_MAX_ENTRIES:]
 
-        # Filter to today only
-        today_str = now.strftime("%Y-%m-%d")
-        history = [h for h in history if h["ts"].startswith(today_str)]
-
-        # Save
+        # Save atomically
         try:
-            with open(path, "w") as f:
+            tmp = path + ".tmp"
+            with open(tmp, "w") as f:
                 json.dump(history, f)
+            os.replace(tmp, path)
         except OSError as e:
             logger.warning("Failed to save history: %s", e)
+
+        # Remove the old shared history file
+        legacy = self.get_plugin_dir("history.json")
+        if os.path.exists(legacy):
+            try:
+                os.remove(legacy)
+            except OSError:
+                pass
 
         return history
 

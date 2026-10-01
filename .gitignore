@@ -6,5 +6,6 @@ __pycache__/
 *.egg-info/
 dist/
 build/
-**/history.json
+**/history*.json
+**/history*.json.tmp
 preview/

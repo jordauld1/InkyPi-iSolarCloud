@@ -83,11 +83,11 @@
 <script src="{{static_dir}}/scripts/chart.js" charset="UTF-8"></script>
 <script>
 document.addEventListener("DOMContentLoaded", function() {
-  const labels = [{% for h in history %}"{{ h.time }}"{% if not loop.last %}, {% endif %}{% endfor %}];
-  const batterySoc = [{% for h in history %}{{ h.battery_soc }}{% if not loop.last %}, {% endif %}{% endfor %}];
-  const solarPower = [{% for h in history %}{{ h.solar_kw }}{% if not loop.last %}, {% endif %}{% endfor %}];
-  const gridImport = [{% for h in history %}{{ h.grid_import_kw|default(h.grid_kw|default(0)) }}{% if not loop.last %}, {% endif %}{% endfor %}];
-  const gridExport = [{% for h in history %}{{ h.grid_export_kw|default(0) }}{% if not loop.last %}, {% endif %}{% endfor %}];
+  const labels = {{ chart.labels | tojson }};
+  const batterySoc = {{ chart.battery_soc | tojson }};
+  const solarPower = {{ chart.solar_kw | tojson }};
+  const gridImport = {{ chart.grid_import_kw | tojson }};
+  const gridExport = {{ chart.grid_export_kw | tojson }};
 
   const canvas = document.getElementById('solarChart');
   const ctx = canvas.getContext('2d');
