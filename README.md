@@ -29,7 +29,13 @@ The layout adapts to all supported InkyPi display sizes and orientations (400x30
 Install the plugin using the InkyPi CLI:
 
 ```bash
-inkypi install isolarcloud https://github.com/jordauld1/InkyPi-iSolarCloud
+inkypi plugin install isolarcloud https://github.com/jordauld1/InkyPi-iSolarCloud
+```
+
+Run the same command again to update to the latest version. To remove it:
+
+```bash
+inkypi plugin uninstall isolarcloud
 ```
 
 ## Setup
