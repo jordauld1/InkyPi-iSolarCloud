@@ -8,7 +8,6 @@ def test_sample_metrics(plugin):
     for key, expected in {
         "curr_power": 3.45,
         "grid_power": -0.85,
-        "load_power": 2.6,
         "today_energy": 18.4,
         "today_grid_feed": 6.2,
         "today_grid_import": 1.1,
@@ -18,6 +17,12 @@ def test_sample_metrics(plugin):
     }.items():
         assert m[key] == pytest.approx(expected)
     assert m["battery_soc"] == 72
+
+
+def test_no_dead_keys(plugin):
+    m = plugin._parse_metrics(SAMPLE_POINTS, "x")
+    assert "today_self_use" not in m
+    assert "load_power" not in m
 
 
 def test_battery_soc_is_int(plugin):

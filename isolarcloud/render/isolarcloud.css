@@ -188,13 +188,6 @@ html, body, .container {
   font-weight: 600;
 }
 
-.tile-sub {
-  font-size: min(2.2dvh, 2.5vw);
-  opacity: 0.6;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
 /* ── Responsive: narrow screens & portrait orientation ─── */
 
 @media (max-aspect-ratio: 1), (max-width: 480px) {

@@ -6,6 +6,7 @@ import json
 import os
 import pytz
 import re
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,6 @@ ESS_POINT_IDS = [ESS_IMPORT_POINT, ESS_EXPORT_POINT, ESS_CHARGE_POINT, ESS_DISCH
 class ISolarCloud(BasePlugin):
     def generate_settings_template(self):
         template_params = super().generate_settings_template()
-        template_params["api_gateways"] = list(API_GATEWAYS.keys())
         template_params["style_settings"] = True
         return template_params
 
@@ -191,7 +191,6 @@ class ISolarCloud(BasePlugin):
         today_grid_feed = round(feed_in_wh / 1000, 1) if feed_in_wh else 0.0
         today_grid_import = round(energy_purchased_wh / 1000, 1) if energy_purchased_wh else 0.0
         curr_power = round(pv_power_w / 1000, 2) if pv_power_w else 0.0
-        load_power = round(load_power_w / 1000, 2) if load_power_w else 0.0
 
         # Net power: positive = importing, negative = exporting
         imp = pf_opt(ess, f"p{ESS_IMPORT_POINT}")
@@ -228,12 +227,10 @@ class ISolarCloud(BasePlugin):
             "curr_power": curr_power,
             "battery_power": battery_power,
             "grid_power": round(net_power_w / 1000, 2),
-            "load_power": load_power,
             "battery_soc": int(round(min(max(battery_soc, 0.0), 100.0))),
             "today_energy": today_energy,
             "today_grid_feed": today_grid_feed,
             "today_grid_import": today_grid_import,
-            "today_self_use": round(today_energy - today_grid_feed, 1),
             "today_load": today_load,
             "self_sufficiency": self_sufficiency,
             "total_energy": total_energy,
@@ -482,13 +479,21 @@ class _SungrowAPI:
 
         url = f"{self.api_base}/{endpoint}"
         session = get_http_session()
-        resp = session.post(url, headers=headers, json=payload, timeout=30)
+        try:
+            resp = session.post(url, headers=headers, json=payload, timeout=30)
+        except requests.RequestException as e:
+            logger.error("iSolarCloud request to %s failed: %s", endpoint, e)
+            raise RuntimeError("iSolarCloud unreachable. Check the Pi's network connection and the selected region.") from e
 
         if resp.status_code != 200:
             logger.error("iSolarCloud API error [%d]: %s", resp.status_code, resp.text[:200])
             raise RuntimeError(f"iSolarCloud API request failed (HTTP {resp.status_code}).")
 
-        result = resp.json()
+        try:
+            result = resp.json()
+        except ValueError as e:
+            logger.error("iSolarCloud returned non-JSON for %s: %s", endpoint, resp.text[:200])
+            raise RuntimeError("iSolarCloud returned an unexpected response. Try again later.") from e
         result_code = result.get("result_code")
         if str(result_code) != "1":
             msg = result.get("result_msg", "Unknown error")

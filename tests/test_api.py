@@ -1,4 +1,5 @@
 import pytest
+import requests
 
 from conftest import FakeResponse, api_ok
 
@@ -29,6 +30,21 @@ def test_login_rejected(api, fake_session):
 def test_http_failure(api, fake_session):
     fake_session.queue("login", FakeResponse(500, None, "boom"))
     with pytest.raises(RuntimeError, match="HTTP 500"):
+        api.login("test-user", "test-pass")
+
+
+def test_network_error_is_wrapped(api, fake_session, monkeypatch):
+    def timeout(*args, **kwargs):
+        raise requests.exceptions.ConnectTimeout("boom")
+
+    monkeypatch.setattr(fake_session, "post", timeout)
+    with pytest.raises(RuntimeError, match="unreachable"):
+        api.login("test-user", "test-pass")
+
+
+def test_non_json_response_is_wrapped(api, fake_session):
+    fake_session.queue("login", FakeResponse(200, None, "<html>"))
+    with pytest.raises(RuntimeError, match="unexpected response"):
         api.login("test-user", "test-pass")
 
 
