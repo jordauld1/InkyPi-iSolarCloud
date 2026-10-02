@@ -14,11 +14,11 @@ your row when done.
 | 003 | [Battery SOC as whole number; unpadded date](003-battery-soc-display.md) | P1 | S | 001 | DONE (Codex gpt-6-sol) |
 | 004 | [Full-day, per-plant, atomic chart history; `tojson`](004-history-fixes.md) | P2 | S | 001 | DONE (Codex gpt-6-sol) |
 | 005 | [Battery-aware grid power and daily usage](005-battery-aware-grid-and-usage.md) | P1 | M | 001 (003 first) — **human checkpoint** | DONE (Codex gpt-6-sol; live-verified) |
-| 006 | [Live battery charge/discharge on battery card](006-battery-flow-on-card.md) | P3 | S | 005 (battery row of its discovery table) | TODO |
-| 007 | [Plant selection help; error on unknown ps_id](007-plant-selection-help.md) | P2 | S | 001 | TODO |
-| 008 | [Network error messages, dead code, unused 12 MB image](008-cleanup-errors-and-dead-code.md) | P3 | S | 001; run after 003–007 | TODO |
-| 010 | [Chart backfill from iSolarCloud history API](010-chart-backfill-from-history-api.md) | P2 | M | 004, 005, 009 | TODO (approved by owner) |
+| 006 | [Live battery charge/discharge on battery card](006-battery-flow-on-card.md) | P3 | S | 005 (battery row of its discovery table) | DONE (Codex gpt-6-sol) |
+| 007 | [Plant selection help; error on unknown ps_id](007-plant-selection-help.md) | P2 | S | 001 | DONE (Codex gpt-6-sol) |
+| 008 | [Network error messages, dead code, unused 12 MB image](008-cleanup-errors-and-dead-code.md) | P3 | S | 001; run after 003–007 | DONE (Codex gpt-6-sol) |
 | 009 | [Spike: fill chart from iSolarCloud history API](009-spike-chart-backfill.md) | P3 | M | 005 Part A — **human checkpoint** | DONE (spike: Go, see 009-spike-findings.md) |
+| 010 | [Chart backfill from iSolarCloud history API](010-chart-backfill-from-history-api.md) | P2 | M | 004, 005, 009 | DONE (Codex gpt-6-sol; live-verified) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
